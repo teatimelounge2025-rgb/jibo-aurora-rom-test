@@ -66,19 +66,73 @@ function getAuroraSpeech(kp) {
 
 async function getKp() {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 7000);
+  const timer = setTimeout(() => controller.abort(), 10000);
+
   try {
-    const response = await fetch('https://api.auroras.live/v1/?type=ace&data=kp', {
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`Aurora API HTTP ${response.status}`);
+    const response = await fetch(
+      'https://services.swpc.noaa.gov/json/planetary_k_index_1m.json',
+      { signal: controller.signal }
+    );
+
+    if (!response.ok) {
+      throw new Error(`NOAA HTTP ${response.status}`);
+    }
+
     const data = await response.json();
-    const kp = Number(data.kp);
-    if (!Number.isFinite(kp) || kp < 0 || kp > 9) throw new Error('Invalid KP value');
-    return { kp, fallback: false };
+
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new Error('NOAA returned no KP records');
+    }
+
+    const now = Date.now();
+
+    const valid = data
+      .map(row => {
+        const raw = row?.estimated_kp;
+        const kp = raw === null || raw === undefined || raw === ''
+          ? NaN
+          : Number(raw);
+
+        const timestamp = Date.parse(
+          String(row?.time_tag || '').replace(' ', 'T') + 'Z'
+        );
+
+        return { kp, timestamp };
+      })
+      .filter(row =>
+        Number.isFinite(row.kp) &&
+        row.kp >= 0 &&
+        row.kp <= 9 &&
+        Number.isFinite(row.timestamp) &&
+        row.timestamp <= now + 60000 &&
+        now - row.timestamp <= 30 * 60 * 1000
+      )
+      .sort((a, b) => b.timestamp - a.timestamp);
+
+    if (!valid.length) {
+      throw new Error('No recent valid NOAA KP measurements');
+    }
+
+    const latest = valid[0];
+
+    console.log(
+      `[Aurora] NOAA estimated KP=${latest.kp}, ` +
+      `timestamp=${new Date(latest.timestamp).toISOString()}`
+    );
+
+    return {
+      kp: latest.kp,
+      fallback: false
+    };
+
   } catch (err) {
-    console.warn('[Aurora] live data unavailable; using KP 2:', err.message);
-    return { kp: 2, fallback: true };
+    console.warn('[Aurora] NOAA data unavailable:', err.message);
+
+    return {
+      kp: null,
+      fallback: true
+    };
+
   } finally {
     clearTimeout(timer);
   }
@@ -95,7 +149,17 @@ async function runAurora() {
     );
     const { kp, fallback } = await getKp();
     console.log(`[Aurora] KP=${kp}; fallback=${fallback}`);
-    await jibo.display.showImage(getAuroraEyeUrl(kp));
+
+    if (fallback) {
+      await jibo.behavior.say(
+        "I'm sorry. The current aurora KP index is unavailable right now. Please try again later."
+      );
+      return;
+    }
+
+    const imageUrl = getAuroraEyeUrl(kp);
+    console.log('[Aurora] Image URL:', imageUrl);
+    await jibo.display.showImage(imageUrl);
     const fallbackText = fallback
       ? 'The live aurora service is not responding, so I will demonstrate the display using a placeholder KP value. '
       : '';
@@ -106,7 +170,12 @@ async function runAurora() {
     // Restore the eye after the forecast, as in the original skill.
     clearTimeout(restoreTimer);
     restoreTimer = setTimeout(() => {
-      jibo.display.showEye().catch(err => console.error('[Aurora] restore eye:', err.message));
+      try {
+        Promise.resolve(jibo.display.showEye())
+          .catch(err => console.error('[Aurora] restore eye:', err.message));
+      } catch (err) {
+        console.error('[Aurora] restore eye:', err.message);
+      }
     }, 9000);
     console.log('[Aurora] speech and image commands completed');
   } catch (err) {
