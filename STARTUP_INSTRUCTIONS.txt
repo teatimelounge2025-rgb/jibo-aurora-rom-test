@@ -1,0 +1,133 @@
+CASPER — MINIMAL JIBO AURORA SKILL TEST
+======================================
+
+Purpose
+-------
+Test the Aurora skill on your own 5x1 Jibo using a local Node.js server.
+This is an experimental ROM-protocol compatibility test, NOT a tested
+5x1 integration. The original Aurora skill was physically tested on a
+Phoenix-firmware Jibo via port 8160. Your 5x1 setup may differ.
+
+Files
+-----
+  aurora-server.js       Minimal ROM client + Aurora skill + local API
+  STARTUP_INSTRUCTIONS.txt  This guide
+
+Requirements
+------------
+* Node.js 20+ (Node.js 22 recommended; built-in fetch required)
+* npm
+* The Express package
+* A compatible 'rom-control' Node.js package/module, obtained from an
+  authorized source. This test bundle does NOT contain the original
+  Re-Commander code or the private rom-control implementation.
+* Jibo and computer reachable over the same trusted network, or a
+  secure equivalent connection.
+* Jibo's ROM endpoint reachable on the configured port. On our Phoenix
+  Jibo, this was port 8160. DO NOT assume that 5x1 uses the same port.
+* Internet access for the Aurora KP API and eye image CDN.
+
+Install
+-------
+1. Create a working directory and copy aurora-server.js into it.
+2. Open a terminal in that directory.
+3. Install Express:
+
+   npm install express
+
+4. Make sure your authorized rom-control module can be resolved by Node
+   from this directory. If you have a local module directory that is
+   compatible with Node's require('rom-control'), install it using:
+
+   npm install /path/to/your/rom-control
+
+   Do NOT run npm install rom-control assuming a similarly named public
+   package is the same implementation. Verify the source first.
+
+Configure and start (any platform)
+----------------------------------
+Run:
+
+   node aurora-server.js
+
+The program will ask:
+
+   Casper, enter your Jibo IP address (e.g. 192.168.1.50):
+
+Enter YOUR Jibo's LAN IP address, not the example and not the author's
+192.168.1.218 address. Find it in your router's DHCP/client list.
+The default ROM port is 8160, but it is NOT confirmed for 5x1.
+
+Optional: set the IP and port ahead of time instead of using the prompt:
+
+Linux/macOS:
+   JIBO_HOST=192.168.1.50 JIBO_PORT=8160 node aurora-server.js
+
+Windows PowerShell:
+   $env:JIBO_HOST="192.168.1.50"
+   $env:JIBO_PORT="8160"
+   node .\aurora-server.js
+
+On Windows you can test TCP reachability with:
+   Test-NetConnection -ComputerName 192.168.1.50 -Port 8160
+
+Replace the example IP with your actual Jibo IP. A successful TCP check
+is not proof of ROM compatibility.
+
+Test in a second terminal
+-------------------------
+1. Confirm ROM connection:
+
+   curl http://127.0.0.1:3000/status
+
+   Expect connected:true before triggering Aurora.
+
+2. Trigger the Aurora skill:
+
+   curl -i http://127.0.0.1:3000/aurora/start
+
+   On Windows PowerShell, use curl.exe if curl is an alias.
+
+   Expected HTTP response (if session ready):
+   {"ok":true,"message":"Aurora skill started"}
+
+3. Observe the Jibo physically. It should say an introductory sentence,
+   display a KP-index eye image, speak the aurora forecast, then restore
+   its normal eye approximately 9 seconds later.
+
+4. Check the server terminal for '[Aurora]' logs. HTTP 200 only means
+   the skill was launched, NOT that Jibo successfully performed it.
+
+5. Stop the server with Ctrl+C.
+
+Troubleshooting
+---------------
+* Cannot find module 'rom-control': the compatible library is not
+  installed/resolvable. This bundle intentionally does not ship it.
+* ECONNREFUSED / connection timeout: check Jibo IP, ROM port, firewall,
+  and whether your 5x1 installation exposes the same ROM interface.
+* 503 ROM session not ready: wait for '[ROM] CONNECTED OK', then retry.
+* 409 Aurora already running: wait for the current invocation to finish.
+* Aurora API unavailable: the server uses KP=2 as a fallback; this is
+  NOT a live forecast.
+* Speech/image does not appear: inspect ROM errors and confirm the
+  firmware supports the required Say and display operations.
+* If 3000 is already used, change PORT (e.g. PORT=3001).
+
+Safety / privacy
+----------------
+* The HTTP API binds ONLY to 127.0.0.1; it is not exposed to your LAN.
+* No wake-word listener is included. The old 8088 wake-word interface
+  is not part of this test.
+* Do not disable your entire firewall permanently. Prefer narrowly
+  scoped local rules if your environment needs access to the ROM port.
+* The eye images are fetched from whitejiboone.sirv.com and the KP data
+  from api.auroras.live. Those services must be reachable.
+* Keep the robot on a stable surface with room to move during speech.
+
+Scope
+-----
+This is a minimal, standalone SERVER FILE but not a self-contained
+installation: it requires a compatible ROM client library. No RoboHub,
+wallet, Re-Commander skill registry, or other private application code
+is included.

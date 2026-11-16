@@ -1,0 +1,18 @@
+{
+  "name": "jibo-aurora-rom-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal Aurora ROM test for Jibo Phoenix and 5x1",
+  "main": "aurora-server.js",
+  "scripts": {
+    "start": "node aurora-server.js",
+    "check": "node --check aurora-server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "rom-control": "2.0.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
